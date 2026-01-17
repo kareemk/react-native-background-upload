@@ -11,6 +11,7 @@ static NSString *const kStateKeyPrefix = @"S3MultipartUpload-";
 @property (nonatomic, strong) NSString *presignedUrlEndpoint;
 @property (nonatomic, strong) NSString *completeEndpoint;
 @property (nonatomic, assign) int partSize;
+@property (nonatomic, strong) NSDictionary *headers;
 @property (nonatomic, assign) long long fileSize;
 @property (nonatomic, assign) int totalParts;
 @property (nonatomic, assign) int currentPart;
@@ -31,7 +32,8 @@ static NSString *const kStateKeyPrefix = @"S3MultipartUpload-";
                        objectKey:(NSString *)objectKey
            presignedUrlEndpoint:(NSString *)presignedUrlEndpoint
                completeEndpoint:(NSString *)completeEndpoint
-                       partSize:(int)partSize {
+                       partSize:(int)partSize
+                        headers:(NSDictionary *)headers {
     self = [super init];
     if (self) {
         _clientId = clientId;
@@ -41,6 +43,7 @@ static NSString *const kStateKeyPrefix = @"S3MultipartUpload-";
         _presignedUrlEndpoint = presignedUrlEndpoint;
         _completeEndpoint = completeEndpoint;
         _partSize = partSize > 0 ? partSize : 5 * 1024 * 1024; // Default 5MB
+        _headers = headers ?: @{};
         _completedParts = [NSMutableArray array];
         _isUploading = NO;
         _isCancelled = NO;
@@ -179,6 +182,11 @@ static NSString *const kStateKeyPrefix = @"S3MultipartUpload-";
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     [request setHTTPMethod:@"GET"];
     
+    // Add auth headers
+    [_headers enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) {
+        [request setValue:value forHTTPHeaderField:key];
+    }];
+    
     __weak typeof(self) weakSelf = self;
     NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
@@ -279,6 +287,11 @@ static NSString *const kStateKeyPrefix = @"S3MultipartUpload-";
     [request setHTTPMethod:@"POST"];
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [request setHTTPBody:jsonData];
+    
+    // Add auth headers
+    [_headers enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) {
+        [request setValue:value forHTTPHeaderField:key];
+    }];
     
     __weak typeof(self) weakSelf = self;
     NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {

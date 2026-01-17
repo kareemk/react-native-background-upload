@@ -385,6 +385,7 @@ RCT_EXPORT_METHOD(startS3MultipartUpload:(NSDictionary *)options resolve:(RCTPro
     NSString *presignedUrlEndpoint = options[@"presignedUrlEndpoint"];
     NSString *completeEndpoint = options[@"completeEndpoint"];
     int partSize = [options[@"partSize"] intValue];
+    NSDictionary *headers = options[@"headers"];
     
     if (!clientId || !path || !uploadId || !objectKey || !presignedUrlEndpoint || !completeEndpoint) {
         reject(@"RN Uploader", @"Missing required parameters for S3 multipart upload", nil);
@@ -405,7 +406,8 @@ RCT_EXPORT_METHOD(startS3MultipartUpload:(NSDictionary *)options resolve:(RCTPro
                                                                         objectKey:objectKey
                                                             presignedUrlEndpoint:presignedUrlEndpoint
                                                                 completeEndpoint:completeEndpoint
-                                                                        partSize:partSize];
+                                                                        partSize:partSize
+                                                                         headers:headers];
     task.delegate = self;
     
     _s3UploadTasks[clientId] = task;
@@ -438,6 +440,7 @@ RCT_EXPORT_METHOD(resumeS3Upload:(NSDictionary *)params resolve:(RCTPromiseResol
     NSString *presignedUrlEndpoint = params[@"presignedUrlEndpoint"];
     NSString *completeEndpoint = params[@"completeEndpoint"];
     int partSize = [params[@"partSize"] intValue];
+    NSDictionary *headers = params[@"headers"];
     
     if (!clientId || !presignedUrlEndpoint || !completeEndpoint) {
         reject(@"RN Uploader", @"clientId, presignedUrlEndpoint, and completeEndpoint are required", nil);
@@ -464,7 +467,8 @@ RCT_EXPORT_METHOD(resumeS3Upload:(NSDictionary *)params resolve:(RCTPromiseResol
                                                                         objectKey:status[@"objectKey"]
                                                             presignedUrlEndpoint:presignedUrlEndpoint
                                                                 completeEndpoint:completeEndpoint
-                                                                        partSize:partSize];
+                                                                        partSize:partSize
+                                                                         headers:headers];
     task.delegate = self;
     
     _s3UploadTasks[clientId] = task;

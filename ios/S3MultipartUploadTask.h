@@ -21,7 +21,8 @@ NS_ASSUME_NONNULL_BEGIN
                        objectKey:(NSString *)objectKey
            presignedUrlEndpoint:(NSString *)presignedUrlEndpoint
                completeEndpoint:(NSString *)completeEndpoint
-                       partSize:(int)partSize;
+                       partSize:(int)partSize
+                        headers:(NSDictionary * _Nullable)headers;
 
 - (void)start;
 - (void)resume;

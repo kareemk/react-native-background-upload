@@ -3,10 +3,12 @@
 #import <React/RCTEventEmitter.h>
 #import <React/RCTBridgeModule.h>
 #import <Photos/Photos.h>
+#import "S3MultipartUploadTask.h"
 
-@interface VydiaRNFileUploader : RCTEventEmitter <RCTBridgeModule, NSURLSessionTaskDelegate>
+@interface VydiaRNFileUploader : RCTEventEmitter <RCTBridgeModule, NSURLSessionTaskDelegate, S3MultipartUploadTaskDelegate>
 {
   NSMutableDictionary *_responsesData;
+  NSMutableDictionary<NSString *, S3MultipartUploadTask *> *_s3UploadTasks;
 }
 @end
 
@@ -29,6 +31,7 @@ NSURLSession *_urlSession = nil;
   if (self) {
     staticEventEmitter = self;
     _responsesData = [NSMutableDictionary dictionary];
+    _s3UploadTasks = [NSMutableDictionary dictionary];
   }
   return self;
 }
@@ -44,7 +47,8 @@ NSURLSession *_urlSession = nil;
         @"RNFileUploader-progress",
         @"RNFileUploader-error",
         @"RNFileUploader-cancelled",
-        @"RNFileUploader-completed"
+        @"RNFileUploader-completed",
+        @"RNFileUploader-part_completed"
     ];
 }
 
@@ -368,6 +372,152 @@ totalBytesExpectedToSend:(int64_t)totalBytesExpectedToSend {
     if (completionHandler) {
         completionHandler(inputStream);
     }
+}
+
+#pragma mark - S3 Multipart Upload Methods
+
+RCT_EXPORT_METHOD(startS3MultipartUpload:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject)
+{
+    NSString *clientId = options[@"clientId"];
+    NSString *path = options[@"path"];
+    NSString *uploadId = options[@"uploadId"];
+    NSString *objectKey = options[@"objectKey"];
+    NSString *presignedUrlEndpoint = options[@"presignedUrlEndpoint"];
+    NSString *completeEndpoint = options[@"completeEndpoint"];
+    int partSize = [options[@"partSize"] intValue];
+    
+    if (!clientId || !path || !uploadId || !objectKey || !presignedUrlEndpoint || !completeEndpoint) {
+        reject(@"RN Uploader", @"Missing required parameters for S3 multipart upload", nil);
+        return;
+    }
+    
+    NSString *escapedPath = [path stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
+    NSURL *fileURL = [NSURL URLWithString:escapedPath];
+    
+    if (![[NSFileManager defaultManager] fileExistsAtPath:[fileURL path]]) {
+        reject(@"RN Uploader", @"File does not exist", nil);
+        return;
+    }
+    
+    S3MultipartUploadTask *task = [[S3MultipartUploadTask alloc] initWithClientId:clientId
+                                                                          fileURL:fileURL
+                                                                         uploadId:uploadId
+                                                                        objectKey:objectKey
+                                                            presignedUrlEndpoint:presignedUrlEndpoint
+                                                                completeEndpoint:completeEndpoint
+                                                                        partSize:partSize];
+    task.delegate = self;
+    
+    _s3UploadTasks[clientId] = task;
+    [task start];
+    
+    resolve(clientId);
+}
+
+RCT_EXPORT_METHOD(getS3UploadStatus:(NSDictionary *)params resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject)
+{
+    NSString *clientId = params[@"clientId"];
+    
+    if (!clientId) {
+        reject(@"RN Uploader", @"clientId is required", nil);
+        return;
+    }
+    
+    NSDictionary *status = [S3MultipartUploadTask getUploadStatusForClientId:clientId];
+    
+    if (status) {
+        resolve(status);
+    } else {
+        resolve([NSNull null]);
+    }
+}
+
+RCT_EXPORT_METHOD(resumeS3Upload:(NSDictionary *)params resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject)
+{
+    NSString *clientId = params[@"clientId"];
+    NSString *presignedUrlEndpoint = params[@"presignedUrlEndpoint"];
+    NSString *completeEndpoint = params[@"completeEndpoint"];
+    int partSize = [params[@"partSize"] intValue];
+    
+    if (!clientId || !presignedUrlEndpoint || !completeEndpoint) {
+        reject(@"RN Uploader", @"clientId, presignedUrlEndpoint, and completeEndpoint are required", nil);
+        return;
+    }
+    
+    NSDictionary *status = [S3MultipartUploadTask getUploadStatusForClientId:clientId];
+    if (!status) {
+        reject(@"RN Uploader", @"No saved upload state found for this clientId", nil);
+        return;
+    }
+    
+    NSString *filePath = status[@"filePath"];
+    NSURL *fileURL = [NSURL URLWithString:filePath];
+    
+    if (![[NSFileManager defaultManager] fileExistsAtPath:[fileURL path]]) {
+        reject(@"RN Uploader", @"Original file no longer exists", nil);
+        return;
+    }
+    
+    S3MultipartUploadTask *task = [[S3MultipartUploadTask alloc] initWithClientId:clientId
+                                                                          fileURL:fileURL
+                                                                         uploadId:status[@"uploadId"]
+                                                                        objectKey:status[@"objectKey"]
+                                                            presignedUrlEndpoint:presignedUrlEndpoint
+                                                                completeEndpoint:completeEndpoint
+                                                                        partSize:partSize];
+    task.delegate = self;
+    
+    _s3UploadTasks[clientId] = task;
+    [task resume];
+    
+    resolve(clientId);
+}
+
+RCT_EXPORT_METHOD(cancelS3Upload:(NSString *)clientId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject)
+{
+    S3MultipartUploadTask *task = _s3UploadTasks[clientId];
+    if (task) {
+        [task cancel];
+        [_s3UploadTasks removeObjectForKey:clientId];
+    }
+    [S3MultipartUploadTask clearUploadStateForClientId:clientId];
+    resolve(@YES);
+}
+
+#pragma mark - S3MultipartUploadTaskDelegate
+
+- (void)uploadTaskDidProgress:(NSString *)clientId progress:(float)progress {
+    [self _sendEventWithName:@"RNFileUploader-progress" body:@{
+        @"id": clientId,
+        @"progress": @(progress)
+    }];
+}
+
+- (void)uploadTaskDidCompletePart:(NSString *)clientId partNumber:(int)partNumber totalParts:(int)totalParts etag:(NSString *)etag {
+    [self _sendEventWithName:@"RNFileUploader-part_completed" body:@{
+        @"id": clientId,
+        @"partNumber": @(partNumber),
+        @"totalParts": @(totalParts),
+        @"etag": etag
+    }];
+}
+
+- (void)uploadTaskDidComplete:(NSString *)clientId objectKey:(NSString *)objectKey {
+    [_s3UploadTasks removeObjectForKey:clientId];
+    [self _sendEventWithName:@"RNFileUploader-completed" body:@{
+        @"id": clientId,
+        @"objectKey": objectKey,
+        @"responseCode": @200,
+        @"responseBody": [NSNull null]
+    }];
+}
+
+- (void)uploadTaskDidFail:(NSString *)clientId error:(NSString *)error {
+    [_s3UploadTasks removeObjectForKey:clientId];
+    [self _sendEventWithName:@"RNFileUploader-error" body:@{
+        @"id": clientId,
+        @"error": error
+    }];
 }
 
 @end

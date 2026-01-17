@@ -9,6 +9,7 @@ import android.util.Log
 import android.webkit.MimeTypeMap
 import com.facebook.react.BuildConfig
 import com.facebook.react.bridge.*
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import net.gotev.uploadservice.UploadService
 import net.gotev.uploadservice.UploadServiceConfig.httpStack
 import net.gotev.uploadservice.UploadServiceConfig.initialize
@@ -26,6 +27,7 @@ class UploaderModule(val reactContext: ReactApplicationContext) : ReactContextBa
   private val TAG = "UploaderBridge"
   private var notificationChannelID = "BackgroundUploadChannel"
   private var isGlobalRequestObserver = false
+  private val activeTasks = mutableMapOf<String, S3MultipartUploadTask>()
 
   override fun getName(): String {
     return "RNFileUploader"
@@ -325,5 +327,144 @@ class UploaderModule(val reactContext: ReactApplicationContext) : ReactContextBa
   }
 
   override fun onHostDestroy() {
+  }
+
+  @ReactMethod
+  fun startS3MultipartUpload(options: ReadableMap, promise: Promise) {
+    // Validate required fields
+    for (key in arrayOf("path", "s3MultipartConfig")) {
+      if (!options.hasKey(key)) {
+        promise.reject(IllegalArgumentException("Missing '$key' field."))
+        return
+      }
+    }
+
+    val configMap = options.getMap("s3MultipartConfig")!!
+    val config = S3MultipartConfig(
+      uploadId = configMap.getString("uploadId")!!,
+      objectKey = configMap.getString("objectKey")!!,
+      presignedUrlEndpoint = configMap.getString("presignedUrlEndpoint")!!,
+      completeEndpoint = configMap.getString("completeEndpoint")!!,
+      clientId = configMap.getString("clientId")!!,
+      partSize = if (configMap.hasKey("partSize")) configMap.getInt("partSize") else 5 * 1024 * 1024
+    )
+
+    val file = File(options.getString("path")!!)
+    if (!file.exists()) {
+      promise.reject(IllegalArgumentException("File does not exist"))
+      return
+    }
+
+    val listener = object : S3MultipartUploadListener {
+      override fun onProgress(clientId: String, progress: Float) {
+        val params = Arguments.createMap().apply {
+          putString("id", clientId)
+          putDouble("progress", progress.toDouble())
+        }
+        sendEvent("RNFileUploader-progress", params)
+      }
+
+      override fun onPartCompleted(clientId: String, partNumber: Int, totalParts: Int, etag: String) {
+        val params = Arguments.createMap().apply {
+          putString("id", clientId)
+          putInt("partNumber", partNumber)
+          putInt("totalParts", totalParts)
+          putString("etag", etag)
+        }
+        sendEvent("RNFileUploader-part_completed", params)
+      }
+
+      override fun onCompleted(clientId: String, objectKey: String) {
+        activeTasks.remove(clientId)
+        val params = Arguments.createMap().apply {
+          putString("id", clientId)
+          putString("objectKey", objectKey)
+          putInt("responseCode", 200)
+          putString("responseBody", "{\"success\":true}")
+        }
+        sendEvent("RNFileUploader-completed", params)
+      }
+
+      override fun onError(clientId: String, error: String) {
+        activeTasks.remove(clientId)
+        val params = Arguments.createMap().apply {
+          putString("id", clientId)
+          putString("error", error)
+        }
+        sendEvent("RNFileUploader-error", params)
+      }
+    }
+
+    val task = S3MultipartUploadTask(reactApplicationContext, file, config, listener)
+    activeTasks[config.clientId] = task
+    task.start()
+
+    promise.resolve(config.clientId)
+  }
+
+  @ReactMethod
+  fun getS3UploadStatus(params: ReadableMap, promise: Promise) {
+    val clientId = params.getString("clientId")
+    if (clientId == null) {
+      promise.reject(IllegalArgumentException("clientId is required"))
+      return
+    }
+
+    val status = S3MultipartUploadTask.getUploadStatus(reactApplicationContext, clientId)
+    if (status == null) {
+      promise.resolve(null)
+      return
+    }
+
+    val result = Arguments.createMap().apply {
+      putString("clientId", status["clientId"] as String)
+      putString("uploadId", status["uploadId"] as String)
+      putString("objectKey", status["objectKey"] as String)
+      putInt("totalParts", status["totalParts"] as Int)
+      putBoolean("inProgress", activeTasks.containsKey(clientId))
+
+      val partsArray = Arguments.createArray()
+      @Suppress("UNCHECKED_CAST")
+      (status["completedParts"] as List<Map<String, Any>>).forEach { part ->
+        partsArray.pushMap(Arguments.createMap().apply {
+          putInt("partNumber", part["partNumber"] as Int)
+          putString("etag", part["etag"] as String)
+        })
+      }
+      putArray("completedParts", partsArray)
+    }
+
+    promise.resolve(result)
+  }
+
+  @ReactMethod
+  fun resumeS3Upload(params: ReadableMap, promise: Promise) {
+    val clientId = params.getString("clientId")
+    if (clientId == null) {
+      promise.reject(IllegalArgumentException("clientId is required"))
+      return
+    }
+
+    val existingTask = activeTasks[clientId]
+    if (existingTask != null) {
+      promise.resolve(true) // Already running
+      return
+    }
+
+    val status = S3MultipartUploadTask.getUploadStatus(reactApplicationContext, clientId)
+    if (status == null) {
+      promise.reject(Exception("No upload state found for clientId: $clientId"))
+      return
+    }
+
+    // Would need to reconstruct the task from saved state
+    // For now, return false indicating manual restart needed
+    promise.resolve(false)
+  }
+
+  private fun sendEvent(eventName: String, params: WritableMap) {
+    reactApplicationContext
+      .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+      .emit(eventName, params)
   }
 }

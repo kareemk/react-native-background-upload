@@ -4,7 +4,7 @@
  */
 import { NativeModules, DeviceEventEmitter } from 'react-native';
 
-export type UploadEvent = 'progress' | 'error' | 'completed' | 'cancelled';
+export type UploadEvent = 'progress' | 'error' | 'completed' | 'cancelled' | 'part_completed';
 
 export type NotificationArgs = {
   enabled: boolean,
@@ -35,6 +35,7 @@ if (NativeModules.VydiaRNFileUploader) {
   NativeModule.addListener(eventPrefix + 'error');
   NativeModule.addListener(eventPrefix + 'cancelled');
   NativeModule.addListener(eventPrefix + 'completed');
+  NativeModule.addListener(eventPrefix + 'part_completed');
 }
 
 /*
@@ -119,4 +120,21 @@ export const addListener = (
   });
 };
 
-export default { startUpload, cancelUpload, addListener, getFileInfo };
+export const startS3MultipartUpload = (options: Object): Promise<string> =>
+  NativeModule.startS3MultipartUpload(options);
+
+export const getS3UploadStatus = (params: { clientId: string }): Promise<Object | null> =>
+  NativeModule.getS3UploadStatus(params);
+
+export const resumeS3Upload = (params: { clientId: string }): Promise<boolean> =>
+  NativeModule.resumeS3Upload(params);
+
+export default {
+  startUpload,
+  cancelUpload,
+  addListener,
+  getFileInfo,
+  startS3MultipartUpload,
+  getS3UploadStatus,
+  resumeS3Upload,
+};

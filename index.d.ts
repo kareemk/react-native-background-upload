@@ -108,8 +108,36 @@ declare module "react-native-background-upload" {
 
     type uploadId = string
 
-    export type UploadListenerEvent = 'progress' | 'error' | 'completed' | 'cancelled'
+    export type UploadListenerEvent = 'progress' | 'error' | 'completed' | 'cancelled' | 'part_completed'
 
+    export interface S3MultipartConfig {
+        uploadId: string;
+        objectKey: string;
+        presignedUrlEndpoint: string;
+        completeEndpoint: string;
+        clientId: string;
+        partSize?: number;
+    }
+
+    export interface S3MultipartUploadOptions extends UploadOptions {
+        s3Multipart: true;
+        s3MultipartConfig: S3MultipartConfig;
+    }
+
+    export interface S3PartCompletedData extends EventData {
+        partNumber: number;
+        totalParts: number;
+        etag: string;
+    }
+
+    export interface S3UploadStatus {
+        clientId: string;
+        uploadId: string;
+        objectKey: string;
+        completedParts: { partNumber: number; etag: string }[];
+        totalParts: number;
+        inProgress: boolean;
+    }
 
     export default class Upload {
         static startUpload(options: UploadOptions | MultipartUploadOptions): Promise<uploadId>
@@ -117,8 +145,12 @@ declare module "react-native-background-upload" {
         static addListener(event: 'error', uploadId: uploadId | null, callback: (data: ErrorData) => void): EventSubscription
         static addListener(event: 'completed', uploadId: uploadId | null, callback: (data: CompletedData) => void): EventSubscription
         static addListener(event: 'cancelled', uploadId: uploadId | null, callback: (data: EventData) => void): EventSubscription
+        static addListener(event: 'part_completed', uploadId: uploadId | null, callback: (data: S3PartCompletedData) => void): EventSubscription
         static getFileInfo(path: string): Promise<FileInfo>
         static cancelUpload(uploadId: uploadId): Promise<boolean>
+        static startS3MultipartUpload(options: S3MultipartUploadOptions): Promise<uploadId>
+        static getS3UploadStatus(params: { clientId: string }): Promise<S3UploadStatus | null>
+        static resumeS3Upload(params: { clientId: string }): Promise<boolean>
     }
 
 }

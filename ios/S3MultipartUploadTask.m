@@ -205,12 +205,12 @@ static NSString *const kStateKeyPrefix = @"S3MultipartUpload-";
         
         NSError *jsonError;
         NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
-        if (jsonError || !json[@"presignedUrl"]) {
+        if (jsonError || !json[@"url"]) {
             [strongSelf failWithError:@"Invalid presigned URL response"];
             return;
         }
         
-        NSString *presignedUrl = json[@"presignedUrl"];
+        NSString *presignedUrl = json[@"url"];
         [strongSelf uploadPartToUrl:presignedUrl partNumber:partNumber];
     }];
     [task resume];

@@ -6,8 +6,17 @@
   "scripts": {
     "lint": "yarn lint:ci --fix",
     "lint:ci": "eslint src example",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
     "release": "semantic-release"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/__tests__/**/*.test.js"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/example/"
+    ]
   },
   "repository": {
     "type": "git",
@@ -32,15 +41,21 @@
   },
   "homepage": "https://github.com/Vydia/react-native-background-upload#readme",
   "devDependencies": {
+    "@babel/core": "^7.28.6",
+    "@babel/preset-env": "^7.28.6",
+    "@babel/preset-flow": "^7.27.1",
     "@react-native-community/eslint-config": "^0.0.7",
     "@semantic-release/commit-analyzer": "^6.3.3",
     "@semantic-release/git": "^7.0.18",
     "@semantic-release/github": "^5.5.5",
     "@semantic-release/npm": "^5.3.4",
     "@semantic-release/release-notes-generator": "^7.3.5",
+    "@types/jest": "^30.0.0",
     "@types/react-native": "^0.64.0",
+    "babel-jest": "^29.7.0",
     "eslint": "^6.8.0",
     "husky": "^4.2.3",
+    "jest": "^29.7.0",
     "lint-staged": "^10.0.8",
     "semantic-release": "^15.13.31"
   },

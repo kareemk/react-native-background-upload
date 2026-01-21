@@ -19,7 +19,8 @@ data class S3MultipartConfig(
     val presignedUrlEndpoint: String,
     val completeEndpoint: String,
     val clientId: String,
-    val partSize: Int = 5 * 1024 * 1024 // 5MB default
+    val partSize: Int = 5 * 1024 * 1024, // 5MB default
+    val headers: Map<String, String> = emptyMap()
 )
 
 interface S3MultipartUploadListener {
@@ -148,8 +149,9 @@ class S3MultipartUploadTask(
     
     private suspend fun fetchPresignedUrl(partNumber: Int): String {
         val url = "${config.presignedUrlEndpoint}?partNumber=$partNumber&uploadId=${config.uploadId}&objectKey=${config.objectKey}"
-        val request = Request.Builder().url(url).get().build()
-        val response = client.newCall(request).execute()
+        val requestBuilder = Request.Builder().url(url).get()
+        config.headers.forEach { (key, value) -> requestBuilder.addHeader(key, value) }
+        val response = client.newCall(requestBuilder.build()).execute()
         
         if (!response.isSuccessful) {
             throw Exception("Failed to get presigned URL: ${response.code}")
@@ -174,12 +176,12 @@ class S3MultipartUploadTask(
             put("parts", partsJson)
         }.toString()
         
-        val request = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url(config.completeEndpoint)
             .post(RequestBody.create("application/json".toMediaType(), body))
-            .build()
+        config.headers.forEach { (key, value) -> requestBuilder.addHeader(key, value) }
         
-        val response = client.newCall(request).execute()
+        val response = client.newCall(requestBuilder.build()).execute()
         
         if (!response.isSuccessful) {
             throw Exception("Complete upload failed: ${response.code}")

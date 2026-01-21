@@ -339,13 +339,27 @@ class UploaderModule(val reactContext: ReactApplicationContext) : ReactContextBa
       }
     }
 
+    // Extract headers if provided
+    val headers = mutableMapOf<String, String>()
+    if (options.hasKey("headers") && options.getType("headers") == ReadableType.Map) {
+      val headersMap = options.getMap("headers")!!
+      val keys = headersMap.keySetIterator()
+      while (keys.hasNextKey()) {
+        val key = keys.nextKey()
+        if (headersMap.getType(key) == ReadableType.String) {
+          headers[key] = headersMap.getString(key)!!
+        }
+      }
+    }
+
     val config = S3MultipartConfig(
       uploadId = options.getString("uploadId")!!,
       objectKey = options.getString("objectKey")!!,
       presignedUrlEndpoint = options.getString("presignedUrlEndpoint")!!,
       completeEndpoint = options.getString("completeEndpoint")!!,
       clientId = options.getString("clientId")!!,
-      partSize = if (options.hasKey("partSize")) options.getInt("partSize") else 5 * 1024 * 1024
+      partSize = if (options.hasKey("partSize")) options.getInt("partSize") else 5 * 1024 * 1024,
+      headers = headers
     )
 
     val file = File(options.getString("path")!!)

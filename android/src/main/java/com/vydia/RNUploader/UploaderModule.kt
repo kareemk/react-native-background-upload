@@ -331,22 +331,21 @@ class UploaderModule(val reactContext: ReactApplicationContext) : ReactContextBa
 
   @ReactMethod
   fun startS3MultipartUpload(options: ReadableMap, promise: Promise) {
-    // Validate required fields
-    for (key in arrayOf("path", "s3MultipartConfig")) {
+    // Validate required fields (flat parameters like iOS)
+    for (key in arrayOf("path", "clientId", "uploadId", "objectKey", "presignedUrlEndpoint", "completeEndpoint")) {
       if (!options.hasKey(key)) {
         promise.reject(IllegalArgumentException("Missing '$key' field."))
         return
       }
     }
 
-    val configMap = options.getMap("s3MultipartConfig")!!
     val config = S3MultipartConfig(
-      uploadId = configMap.getString("uploadId")!!,
-      objectKey = configMap.getString("objectKey")!!,
-      presignedUrlEndpoint = configMap.getString("presignedUrlEndpoint")!!,
-      completeEndpoint = configMap.getString("completeEndpoint")!!,
-      clientId = configMap.getString("clientId")!!,
-      partSize = if (configMap.hasKey("partSize")) configMap.getInt("partSize") else 5 * 1024 * 1024
+      uploadId = options.getString("uploadId")!!,
+      objectKey = options.getString("objectKey")!!,
+      presignedUrlEndpoint = options.getString("presignedUrlEndpoint")!!,
+      completeEndpoint = options.getString("completeEndpoint")!!,
+      clientId = options.getString("clientId")!!,
+      partSize = if (options.hasKey("partSize")) options.getInt("partSize") else 5 * 1024 * 1024
     )
 
     val file = File(options.getString("path")!!)

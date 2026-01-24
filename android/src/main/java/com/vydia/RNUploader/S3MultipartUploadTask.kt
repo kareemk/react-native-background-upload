@@ -217,6 +217,13 @@ class S3MultipartUploadTask(
         val json = prefs.getString(config.clientId, null) ?: return
         try {
             val obj = JSONObject(json)
+            // Only restore state if uploadId matches - otherwise this is a new upload
+            val savedUploadId = obj.optString("uploadId", "")
+            if (savedUploadId != config.uploadId) {
+                // Different uploadId means server reset the upload - start fresh
+                clearState()
+                return
+            }
             val parts = obj.getJSONArray("completedParts")
             for (i in 0 until parts.length()) {
                 val part = parts.getJSONObject(i)

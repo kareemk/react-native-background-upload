@@ -92,6 +92,14 @@ static NSString *const kStateKeyPrefix = @"S3MultipartUpload-";
         return;
     }
     
+    // Only restore state if uploadId matches - otherwise this is a new upload
+    NSString *savedUploadId = state[@"uploadId"];
+    if (![savedUploadId isEqualToString:_uploadId]) {
+        [S3MultipartUploadTask clearUploadStateForClientId:_clientId];
+        [self failWithError:@"Upload ID mismatch, will retry with fresh upload"];
+        return;
+    }
+    
     _uploadId = state[@"uploadId"];
     _objectKey = state[@"objectKey"];
     _completedParts = [NSMutableArray arrayWithArray:state[@"completedParts"]];

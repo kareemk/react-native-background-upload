@@ -272,6 +272,7 @@ static NSString *const kStateKeyPrefix = @"S3MultipartUpload-";
     NSDictionary *body = @{
         @"uploadId": _uploadId,
         @"objectKey": _objectKey,
+        @"clientId": _clientId,
         @"parts": sortedParts
     };
     

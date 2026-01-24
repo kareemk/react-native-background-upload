@@ -173,6 +173,7 @@ class S3MultipartUploadTask(
         val body = JSONObject().apply {
             put("uploadId", config.uploadId)
             put("objectKey", config.objectKey)
+            put("clientId", config.clientId)
             put("parts", partsJson)
         }.toString()
         
